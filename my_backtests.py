@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from my_script import *
-import pandas_ta as ta
 
 def cleaning(y, x):
     if isinstance(y, pd.Series) and isinstance(x, pd.Series):
