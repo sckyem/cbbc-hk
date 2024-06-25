@@ -1,7 +1,6 @@
 from my_backtests import sma, pnls, classify
 from my_yfinance import get_ohlcv
 from my_io import download_zip, write_csv, read_csv, path, read_parquet, write_parquet
-from my_mongodb import Mongodb
 import streamlit as st
 from shutil import move
 from default_modules import *
@@ -119,8 +118,6 @@ def load_from(source):
         case "MongoDB":
             #query = st.text_input("query", {})
             #projection = st.text_input("projection", {})
-            document = Mongodb('test', 'cbbc')
-            df = document.read(query={}, projection={}, is_dataframe=True)
     return df
 
 def save_to(data, save_format):
@@ -129,9 +126,6 @@ def save_to(data, save_format):
             result = write_parquet(data, root, 'cbbc', 'cbbc')
         case "CSV":
             result = write_csv(data, root, 'cbbc', 'cbbc')
-        case "MongoDB":
-            document = Mongodb('test', 'cbbc')
-            result = document.write(data)
     return result
 
 def show_line_charts(dataframe, lines_per_tab, lines_per_chart, is_show_close, is_download=False):
@@ -185,7 +179,7 @@ def app():
             # if is_load_pnls:
             #     pass
             # else:            
-                source = st.sidebar.selectbox('Load data from', [False, "HKEX", "Parquet", "CSV", "MongoDB"])
+                source = st.sidebar.selectbox('Load data from', [False, "HKEX", "Parquet", "CSV"])
                 if source:
                     cbbc = load_from(source)
                     st.session_state.cbbc = cbbc
