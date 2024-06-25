@@ -342,8 +342,6 @@ def app():
                                 pnl = pnl[[  (*list(c)[:1], *list(c)[1:]) if isinstance(c, tuple) else c for c in pnl.columns if last == list(c)[1:]  ]]
                             pnl.columns = columns_to_strings(pnl.columns)
 
-                            if min_sharpe:
-                                sharpe = pnl.mean() / pnl.
 
 
                             if is_show_pnl:
