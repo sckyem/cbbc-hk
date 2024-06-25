@@ -116,6 +116,7 @@ def load_from(source):
         case "CSV":
             df = read_csv(root, 'cbbc', 'cbbc')
         case "MongoDB":
+            pass
             #query = st.text_input("query", {})
             #projection = st.text_input("projection", {})
     return df
