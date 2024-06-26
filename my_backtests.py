@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from my_script import *
+import pandas_ta as ta
 
 def cleaning(y, x):
     if isinstance(y, pd.Series) and isinstance(x, pd.Series):
@@ -571,7 +572,7 @@ def sma(dataframe, windows=[10], is_above_sma=False, is_uptrend=False, is_accele
     else:
         return dfs
 
-def pnls(returns, indicators, labels={}, is_add_returns=False):    
+def pnls(returns, indicators, is_add_returns=False, labels={}):    
     if returns is not None and indicators is not None:
         if isinstance(returns, pd.Series):
             returns = returns.to_frame()
@@ -582,7 +583,11 @@ def pnls(returns, indicators, labels={}, is_add_returns=False):
         pnls = []
         for r in returns:
             df = pd.concat([returns[r], indicators], axis=1).dropna()
-            pnl = df.set_index(indicators.columns.to_list(), append=True).unstack(levels, fill_value=0)            
+            pnl = df.set_index(indicators.columns.to_list(), append=True).unstack(levels, fill_value=0)
+
+            for i, col in enumerate(pnl.columns):
+                pnl[col].__doc__ = pnl.columns.names[i]
+
             pnls.append(  pnl  )
             # if len(returns.columns) == 1:
             #     result = pnl
@@ -590,17 +595,18 @@ def pnls(returns, indicators, labels={}, is_add_returns=False):
             #     pnl['return'] = r
             #     
         if pnls:
-        #     result = pd.concat(pnls).set_index('return', append=True).unstack(1, fill_value=0)
             pnls = pd.concat(pnls, axis=1)
             if labels:
                 for k,v in labels.items():
                     pnls[k] = v
                     pnls = pnls.set_index(k, append=True).unstack(1, fill_value=0)
-            
+
+            for i, col in enumerate(pnls.columns):
+                pnls[col].__doc__ = pnls.columns.names[i]
+
             if is_add_returns:
                 pnls = pd.concat([returns, pnls], axis=1).dropna()
             return pnls
-
 
 def cumsums(pnls, lowest_pnl=0, to_period='Q'):
     def func(x):
@@ -615,6 +621,17 @@ def cumsums(pnls, lowest_pnl=0, to_period='Q'):
             return df.loc[:, df.iloc[-1] > lowest_pnl]
         else:
             return df
+
+def performances(pnls):
+    performance =pd.DataFrame()
+    cpnl = pnls.cumsum()
+    holding_period_day = (cpnl.index[-1] - cpnl.index[0]).days
+    performance['return_on_capital'] = cpnl.iloc[-1]
+    performance['annualized_return'] = performance['return_on_capital'].add(1).pow(365 / holding_period_day).sub(1)
+    performance['annualized_std'] = pnls.std() * math.sqrt(365)
+    performance['annualized_sr'] = np.where(performance['annualized_std'] > 0, performance['annualized_return'].div(performance['annualized_std']), 0)
+    performance['no_of_trades'] = pnls.apply(  lambda x: (x.shift(1) == 0) & (x != 0)  ).sum()
+    return performance
 
 if __name__ == '__main__':
 

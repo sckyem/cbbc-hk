@@ -1,6 +1,7 @@
-from my_backtests import sma, pnls, classify
+from my_backtests import sma, pnls, classify, performances
 from my_yfinance import get_ohlcv
 from my_io import download_zip, write_csv, read_csv, path, read_parquet, write_parquet
+from my_mongodb import Mongodb
 import streamlit as st
 from shutil import move
 from default_modules import *
@@ -76,13 +77,21 @@ def symbols():
     df = data(files=unzip_files[-1:])
     return df.groupby('Underlying')['Turnover'].sum().sort_values(ascending=False).index.to_list()
 
-def cbbc():
+def ungrouped_cbbc():
     df = data()
     df['Bought_Amount'] = df['No_of_CBBC_Bought'] * df['Average_Price_per_CBBC_Bought']
     df['Sold_Amount'] = df['No_of_CBBC_Sold'] * df['Average_Price_per_CBBC_Sold']
-    df = df[['Trade_Date', 'Underlying', 'Bull_Bear', 'Bought_Amount', 'Sold_Amount', 'Volume', 'CBBC', 'Turnover']]
-    df = df.groupby(  ['Trade_Date', 'Underlying', 'Bull_Bear']  ).sum().unstack(level=[1, 2], fill_value=0)
-    df = df.swaplevel(0, 1, axis=1).sort_index(axis=1)
+    df['Shares'] = df['CBBC'] / df['Ent_Ratio']
+    df = df.set_index(['Trade_Date', 'Underlying', 'Bull_Bear', 'MCE', 'Call_Level'])
+    df = df[['Bought_Amount', 'Sold_Amount', 'Volume', 'CBBC', 'Turnover', 'Shares']]
+    df = df[~(df == 0).all(axis=1)]
+    return df
+
+def cbbc():
+    df = ungrouped_cbbc()
+    df = df.groupby(level=[0, 1, 2, 3]).agg(['skew', 'sum']).unstack(level=[1, 2, 3])
+    df = df.swaplevel(0, 2, axis=1)
+    df.columns = columns_to_strings(df.columns)
     return df
 
 def read_cbbc(is_read_csv=False, is_read_parquet=False, is_read_mongodb=False, is_write_mongodb=False, is_write_csv=False, is_write_parquet=False, query={}, projection={}):
@@ -116,9 +125,10 @@ def load_from(source):
         case "CSV":
             df = read_csv(root, 'cbbc', 'cbbc')
         case "MongoDB":
-            pass
             #query = st.text_input("query", {})
             #projection = st.text_input("projection", {})
+            document = Mongodb('test', 'cbbc')
+            df = document.read(query={}, projection={}, is_dataframe=True)
     return df
 
 def save_to(data, save_format):
@@ -127,6 +137,9 @@ def save_to(data, save_format):
             result = write_parquet(data, root, 'cbbc', 'cbbc')
         case "CSV":
             result = write_csv(data, root, 'cbbc', 'cbbc')
+        case "MongoDB":
+            document = Mongodb('test', 'cbbc')
+            result = document.write(data)
     return result
 
 def show_line_charts(dataframe, lines_per_tab, lines_per_chart, is_show_close, is_download=False):
@@ -180,9 +193,9 @@ def app():
             # if is_load_pnls:
             #     pass
             # else:            
-                source = st.sidebar.selectbox('Load data from', [False, "Parquet"])
+                source = st.sidebar.selectbox('Load data from', [False, "HKEX", "Parquet", "CSV", "MongoDB"])
                 if source:
-                    cbbc = load_from(source)
+                    cbbc = load_from(source)                    
                     st.session_state.cbbc = cbbc
 
                     if cbbc is not None:
@@ -222,6 +235,7 @@ def app():
 
             lines_per_chart = st.sidebar.select_slider("No of Lines per Chart", list(range(1, 11)), 1)
             charts_per_tab = st.sidebar.select_slider("No of Charts per Tab", list(range(10, 101)), 10)
+            chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 500)
             lines_per_tab = lines_per_chart * charts_per_tab
 
             if elements_selected:
@@ -256,9 +270,9 @@ def app():
                                         close_scaled = get_scaled_df(close, chart_df.min().min(), chart_df.max().max())
                                     if is_show_close:
                                         tmp = pd.concat([chart_df, close_scaled], axis=1).dropna()
-                                    tab.line_chart(  tmp  )
+                                    tab.line_chart(  tmp, height=chart_height  )
                             else:
-                                tab.line_chart(  chart_df  )
+                                tab.line_chart(  chart_df, height=chart_height  )
             st.session_state.selected_cbbc = df
             
 
@@ -270,7 +284,7 @@ def app():
             ta_name = st.sidebar.selectbox("TA", ["No", "SMA"])
                 
             if ta_name == "SMA":
-                windows = st.sidebar.multiselect("Windows", [5, 10, 20])
+                windows = st.sidebar.multiselect("Windows", [5, 10, 20, 30, 40])
                 if windows:                    
                     ta_method = st.sidebar.selectbox("SMA_ta_method", ["", "is_above_sma", "is_uptrend", "is_accelerate"])
                     if ta_method:
@@ -296,15 +310,18 @@ def app():
             elements_limit = [  st.sidebar.select_slider(f"level{i} elements_limit", list(range(1, len(set) +1)), 1) if len(set) > 1 else 1 for i, set in enumerate(elements) ]
             combination_limit = max(elements_limit)
             combinations = combination(df.columns, combination_limit)
-            combinations = [c for c in combinations if all(a <= b for a, b in zip([len(set(t)) for t in zip(*[  str(i).split(',') for i in c])], elements_limit))]
+            combinations = [  c for c in combinations if all(a <= b for a, b in zip([len(set(t)) for t in zip(*[  str(i).split(',') for i in c])], elements_limit))  ]
 
             start_time_delta = st.sidebar.select_slider("start_time_delta", list(range(1, 6)), 1)
             duration = st.sidebar.select_slider("duration", list(range(1, 3)), 1)
-            is_show_last = st.sidebar.selectbox("is_show_last", [True, False], 1)
+            
             is_show_pnl = st.sidebar.selectbox("is_show_pnl", [True, False], 1)
             is_compare_benchmark = st.sidebar.selectbox("is_compare_benchmark", [True, False], 1)
+            is_show_last = st.sidebar.selectbox("is_show_last", [True, False], 1)
+            filter_by_annualized_sr = st.sidebar.select_slider("minimal sr", [i/10 for i in range(0, 21)], 0)
+
             if is_show_pnl or is_compare_benchmark:
-                chart_height = st.sidebar.select_slider("chart_height", list(range(500, 1001, 50)), 500)
+                chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 500)
 
             prev_symbol = ''
             tasks = []
@@ -312,43 +329,48 @@ def app():
                 symbol = c[0][0]
                 if symbol != prev_symbol:                    
                     ohlcv = get_ohlcv(yfinance_symbol(symbol), df.index[0], df.index[-1], 1, 1, is_drop_hl=True, is_download=False)
-
-                        # windows = st.sidebar.multiselect("Windows", [5, 10, 20])
-                        
-                        # ta_method = st.sidebar.selectbox("SMA_ta_method", ["", "is_above_sma", "is_uptrend", "is_accelerate"])
-                        # if ta_method:
-                        #     ohlcv = sma(ohlcv, windows, **{ta_method:True}, is_classify=False)
-
                     returns = get_log_returns(ohlcv, start_time_delta, duration)
+
                 tasks.append([returns, df[c]])
                 prev_symbol = symbol
 
             if tasks:
                 tab_names = [  str(i) for i in range(0, len(tasks))  ]
                 for i, tab in enumerate(st.tabs(tab_names)):
-                    with tab:
-                        task = tasks[i]
-                        tab.dataframe(task[1].columns)
-                        task[1] = classify(task[1])
-                        last = task[1].iloc[-1].tolist()
-                        for r in task[0]:
-                            pnl = pnls(  task[0][r], task[1]  )
-                            if is_show_last:
-                                pnl = pnl[[  (*list(c)[:1], *list(c)[1:]) if isinstance(c, tuple) else c for c in pnl.columns if last == list(c)[1:]  ]]
-                            pnl.columns = columns_to_strings(pnl.columns)
+                    task = tasks[i]
+                    tab.dataframe(task[1].columns)
+                    task[1] = classify(task[1])
+                    last = task[1].iloc[-1].tolist()
 
+                    for r in task[0]:
+                        pnl = pnls(  task[0][r], task[1]  )
+                        if is_show_last:
+                            pnl = pnl[[  (*list(c)[:1], *list(c)[1:]) if isinstance(c, tuple) else c for c in pnl.columns if last == list(c)[1:]  ]]
+                        pnl.columns = columns_to_strings(pnl.columns)
 
+                        performance = performances(pnl)
+                        
+                        if filter_by_annualized_sr > 0:
+                            columns_selected = performance[performance['annualized_sr'].abs() > filter_by_annualized_sr].index
+                            pnl = pnl.loc[:, pnl.columns.isin(columns_selected)]
 
-                            if is_show_pnl:
-                                cpnl = pd.concat([task[0][r], pnl], axis=1).dropna().cumsum()
-                                cpnl.iloc[0] = 0
-                                tab.line_chart(cpnl, height=chart_height)
-                            elif is_compare_benchmark:
-                                compare = cpnl.apply(lambda row: row[1:].subtract(row[0]), axis=1)
-                                tab.line_chart(compare, height=chart_height)
-                            else:
-                                tab.dataframe(pd.concat(task, axis=1).dropna())
-                            
+                        if is_show_pnl:
+                            if not pnl.empty:
+                                with tab:
+                                    cpnl = pd.concat([task[0][r], pnl], axis=1).dropna().cumsum()
+                                    cpnl.iloc[0] = 0
+                                    tab.line_chart(cpnl, height=chart_height)
+
+                                    if is_compare_benchmark:
+                                        compare = cpnl.apply(lambda row: row[1:].subtract(row[0]), axis=1)
+                                        tab.line_chart(compare, height=chart_height)
+
+                                    st.write()
+                                    st.divider()
+                        
+                        else:
+                            tab.dataframe(pd.concat(task, axis=1).dropna())
+                                
             else:
                 st.write("No task")
 
