@@ -180,7 +180,7 @@ def app():
             # if is_load_pnls:
             #     pass
             # else:            
-                source = st.sidebar.selectbox('Load data from', [False, "HKEX", "Parquet", "CSV"])
+                source = st.sidebar.selectbox('Load data from', [False, "Parquet"])
                 if source:
                     cbbc = load_from(source)
                     st.session_state.cbbc = cbbc
