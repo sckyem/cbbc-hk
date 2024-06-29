@@ -9,7 +9,7 @@ class Mongodb:
         self.DOCUMENT = document
 
     def atlas_conn(self, is_ping=False):
-        uri = f"mongodb+srv://mongodbpw@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+        uri = ""
         try:
             conn = MongoClient(uri, server_api=ServerApi('1'))
             if is_ping:
