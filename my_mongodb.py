@@ -1,7 +1,6 @@
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from default_modules import *
-from my_pw import mongodbpw
 
 class Mongodb:
 
@@ -10,7 +9,7 @@ class Mongodb:
         self.DOCUMENT = document
 
     def atlas_conn(self, is_ping=False):
-        uri = f"mongodb+srv://{mongodbpw}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+        uri = f"mongodb+srv://mongodbpw@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
         try:
             conn = MongoClient(uri, server_api=ServerApi('1'))
             if is_ping:
