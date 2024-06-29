@@ -1,4 +1,3 @@
-from pymongo.server_api import ServerApi
 from default_modules import *
 
 class Mongodb:
