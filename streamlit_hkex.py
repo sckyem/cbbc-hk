@@ -33,7 +33,7 @@ def load_from(source, collection='', document='', query={}, projection={}):
             df = read_csv(root, 'cbbc', 'cbbc')
         case "MongoDB":
             document = Mongodb(collection, document)
-            df = document.read(query={}, projection={}, is_dataframe=True)            
+            df = document.read(query, projection, is_dataframe=True)            
     return df
 
 def app():
@@ -70,10 +70,10 @@ def app():
         chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 300)
 
         if df is not None and not df.empty:
-            st.title("Historical Data for CBBC")
+            st.title("Historical Data of CBBC", anchor=False)
             st.write(f"Last update: {df.index[-1].strftime('%Y-%m-%d (%a)')}")
 
-            tab_names = [  str(i) for i in range(0, math.ceil(len(df.columns) / lines_per_tab))]
+            tab_names = [  str(i+1) for i in range(0, math.ceil(len(df.columns) / lines_per_tab))]
             for i, tab in enumerate(st.tabs(tab_names)):
                 
                 symbols = list(set(  [str(i).split(',')[0] for i in df.columns]  ))
