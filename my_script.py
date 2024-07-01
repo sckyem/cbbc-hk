@@ -80,12 +80,6 @@ def get_duration(interval, window):
         duration = window * string_to_num(interval) * 60
     return int(duration)
 
-def print_is_up_to_date(data=None, data_name=None, interval=None):
-    if interval and (  isinstance(data, pd.Series) or isinstance(data, pd.DataFrame)  ) and not data.empty:
-        last = data.last_valid_index() + interval_to_timedelta(interval)
-        current = datetime.datetime.utcnow()
-        if current > last: print(f"{data_name} not up to date")
-
 def rename_cols(df, column_names):
     if isinstance(df, pd.Series) and isinstance(column_names, str):
         df.name = column_names
@@ -211,19 +205,29 @@ def interval_to_second(interval, is_milliseconds=False):
     else: 
         return int(second)
 
-def interval_to_timedelta(interval, window=1):
+def interval_to_timedelta(interval, multiply=1):
     interval = str(interval).lower()
-    if interval.endswith('h'):
-        hours = int(interval[:-1]) * window
-        return datetime.timedelta(hours=hours)
-    elif interval.endswith('d'):
-        days = int(interval[:-1])* window
-        return datetime.timedelta(days=days)
-    elif interval.endswith('m'):
-        minutes = int(interval[:-1])* window
-        return datetime.timedelta(minutes=minutes)
-    else:
-        raise ValueError("Invalid time delta format")
+    value = interval[:-1]
+    unit = interval[-1]
+    match unit:
+        case 'y':
+            days = float(value) * multiply *365
+            return datetime.timedelta(days=days)   
+        case 'm':
+            days = float(value) * multiply *30
+            return datetime.timedelta(days=days)   
+        case 'w':
+            days = float(value) * multiply *7
+            return datetime.timedelta(days=days)   
+        case 'd':
+            days = float(value) * multiply
+            return datetime.timedelta(days=days)    
+        case 'd':
+            hours = float(value) * multiply
+            return datetime.timedelta(hours=hours)
+        case 'd':
+            minutes = float(value)* multiply
+            return datetime.timedelta(minutes=minutes)
 
 def count_interval(duration, interval):
     if isinstance(duration, int):
@@ -543,6 +547,8 @@ def get_the_last_position(number):
     return get_the_first_position(number)
 
 def get_scaled_df(df, min=0, max=0):
+    if len(df.columns) == 1:
+        df = df.squeeze()
     if isinstance(df, pd.Series):
         return (df - df.min()) / (df.max() - df.min()) * (max - min) + min
     else:
@@ -582,7 +588,14 @@ def strings_to_columns(columns):
         columns = pd.MultiIndex.from_tuples(columns)
     return columns
 
-def get_log_returns(ohlc, start_time_delta=0, duration=1):
+def logarithm(dataframe, start_time_delta=-1, duration=1):
+    df = dataframe.copy()
+    start = -start_time_delta
+    end = start - duration
+    df = np.log(df.shift(end)) - np.log(df.shift(start))
+    return df.replace([np.inf, -np.inf], np.nan).dropna()
+
+def get_log_returns(ohlc, start_time_delta=-1, duration=1):
     p = ohlc.copy()
     start = -start_time_delta
     end = start - duration

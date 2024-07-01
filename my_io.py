@@ -104,47 +104,36 @@ def download_zip(url, download_folder='', unzip_folder=''):
         print(f"Failed to download file from {url}.")
         return False
 
-def path(*folders_and_file, is_abs_path=True, is_file_paths=False, extensions=[], is_file_name_as_key=False, is_make_dirs=False):    
+def path(*folders_and_file, is_abs_path=True, is_file_paths=False, extensions=[], is_file_name_as_key=False):    
     path = os.path.join(*folders_and_file)
+
     if is_abs_path:
         path = os.path.abspath(path)
-    
-    if os.path.isdir(path):
-        if is_file_paths:
+
+    folder, file = os.path.split(path)
+    if "." in file :
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+    else:
+        if not os.path.exists(path):
+            os.makedirs(path)
+
+    if is_file_paths:
             files = os.listdir(path)
             if extensions:
                 if isinstance(extensions, str):
                     extensions = [extensions]
                 extensions = [e if str(e).startswith(".") else f".{e}" for e in extensions]
                 files = [f for f in files for e in extensions if str(f).endswith(f"{e}")]
+            
             if is_file_name_as_key:
                 return {i:os.path.join(path, i) for i in files}
             else:
                 return [os.path.join(path, i) for i in files]
     else:
-        if not os.path.isfile(path) and is_make_dirs:
-            folder, file = os.path.split(path)
-            os.makedirs(folder, exist_ok=True) if "." in file else os.makedirs(path)
-    return path
-    
-def read_data(root, file, folders=[], func=None, is_read_csv=False, is_read_parquet=False, is_read_mongodb=False, is_write_mongodb=False, is_write_csv=False, is_write_parquet=False, query={}, projection={}):
-    if is_read_mongodb or is_write_mongodb:
-        from my_mongodb import Mongodb
-        document = Mongodb(root, file)
-    file = path(root, *folders, file)    
-    if is_read_mongodb:
-        df = document.read(query, projection, is_dataframe=True)
-    elif is_read_csv:
-        df = read_csv(file)
-    elif is_read_parquet:
-        df = read_parquet(file)
-    else:
-        df = func()
-    if df is not None:
-        if is_write_mongodb:
-            document.update(df)
-        if is_write_csv:
-            write_csv(df, file)
-        if is_write_parquet:
-            write_parquet(df, file)
-    return df
+        return path
+            
+def remove(*folders_and_file_name):
+    file = path(*folders_and_file_name)
+    if os.path.exists(file):
+        os.remove(file)
