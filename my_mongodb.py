@@ -1,13 +1,16 @@
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
 from default_modules import *
 
 class Mongodb:
 
-    def __init__(self, collection='test', document='test'):
+    def __init__(self, collection='test', document='test', secret=''):
         self.COLLECTION = collection
         self.DOCUMENT = document
+        self.secret = secret
 
     def atlas_conn(self, is_ping=False):
-        uri = ""
+        uri = f"mongodb+srv://{self.secret}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
         try:
             conn = MongoClient(uri, server_api=ServerApi('1'))
             if is_ping:
@@ -60,9 +63,9 @@ class Mongodb:
 
     def update(self, data):
         new = data.to_frame() if isinstance(data, pd.Series) else data.copy()
-        if isinstance(new, pd.DataFrame):
-            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)
-            if old:
+        if isinstance(new, pd.DataFrame) and not new.empty:
+            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)            
+            if isinstance(old, pd.DataFrame):
                 if (list(old.columns) == list(new.columns)) and (type(old.index) == type(new.index)):
                     result = new.ne(old).any(axis=1)
                     diff = new.loc[result[result].index]
@@ -76,7 +79,7 @@ class Mongodb:
                         print("Update Success" if result.acknowledged else "Error.")
                         return True
                     else:
-                        print(f"No need to update.")
+                        print(f"No update for {self.COLLECTION} {self.DOCUMENT}.")
                         return False
             else:
                 if not self.find():
