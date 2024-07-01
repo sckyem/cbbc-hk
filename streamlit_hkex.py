@@ -24,7 +24,8 @@ def yfinance_symbol(symbols):
         return [  func(i) for i in symbols  ]
     else:
         return func(symbols)
-
+    
+@st.cache_data(ttl=600)
 def load_from(source, collection='', document='', query={}, projection={}):
     match source:
         case "Parquet":

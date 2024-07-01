@@ -1,16 +1,17 @@
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from default_modules import *
+import streamlit as st
 
 class Mongodb:
 
     def __init__(self, collection='test', document='test'):
         self.COLLECTION = collection
         self.DOCUMENT = document
-        
-        import streamlit as st
+
         self.secret = st.secrets['mongodbpw']
 
+    @st.cache_resource
     def atlas_conn(self, is_ping=False):
         uri = f"mongodb+srv://{self.secret}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
         try:
