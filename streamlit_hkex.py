@@ -6,6 +6,7 @@ import itertools
 
 root = 'hkex'
 yfinance_collection = 'yfinance'
+secret = st.secrets['mongodbpw']
 
 def yfinance_symbol(symbols):
     def func(symbol):
@@ -34,9 +35,8 @@ def load_from(source):
             df = read_csv(root, 'cbbc', 'cbbc')
         case "MongoDB":
             #query = st.text_input("query", {})
-            #projection = st.text_input("projection", {})
-            
-            document = Mongodb('cbbc', 'cbbc', st.secrets['mongodbpw'])
+            #projection = st.text_input("projection", {})            
+            document = Mongodb('cbbc', 'cbbc', secret)
             df = document.read(query={}, projection={}, is_dataframe=True)
     return df
 
@@ -74,13 +74,14 @@ def app():
         chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 300)
 
         if df is not None and not df.empty:
+            st.title("Historical Data for CBBC")
             st.write(f"Last update: {df.index[-1].strftime('%Y-%m-%d (%a)')}")
 
             tab_names = [  str(i) for i in range(0, math.ceil(len(df.columns) / lines_per_tab))]
             for i, tab in enumerate(st.tabs(tab_names)):
 
                 symbols = list(set(  [str(i).split(',')[0] for i in df.columns]  ))
-                symbols_closes = {  i:Mongodb(yfinance_collection, yfinance_symbol(i), st.secrets['mongodbpw']).read({'_id': {'$gte': df.index[0], '$lte': df.index[-1]}}, {'_id':1, 'Close':1}, is_dataframe=True) for i in symbols  }
+                symbols_closes = {  i:Mongodb(yfinance_collection, yfinance_symbol(i), secret).read({'_id': {'$gte': df.index[0], '$lte': df.index[-1]}}, {'_id':1, 'Close':1}, is_dataframe=True) for i in symbols  }
 
                 with tab:
                     tab_df = df[df.columns[  i*lines_per_tab:i*lines_per_tab+lines_per_tab  ]]
