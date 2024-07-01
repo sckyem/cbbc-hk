@@ -5,8 +5,6 @@ from default_modules import *
 import itertools
 
 root = 'hkex'
-yfinance_collection = 'yfinance'
-secret = st.secrets['mongodbpw']
 
 def yfinance_symbol(symbols):
     def func(symbol):
@@ -27,17 +25,15 @@ def yfinance_symbol(symbols):
     else:
         return func(symbols)
 
-def load_from(source):
+def load_from(source, collection='', document='', query={}, projection={}):
     match source:
         case "Parquet":
             df = read_parquet(root, 'cbbc', 'cbbc')
         case "CSV":
             df = read_csv(root, 'cbbc', 'cbbc')
         case "MongoDB":
-            #query = st.text_input("query", {})
-            #projection = st.text_input("projection", {})            
-            document = Mongodb('cbbc', 'cbbc', secret)
-            df = document.read(query={}, projection={}, is_dataframe=True)
+            document = Mongodb(collection, document)
+            df = document.read(query={}, projection={}, is_dataframe=True)            
     return df
 
 def app():
@@ -46,7 +42,7 @@ def app():
     content = st.empty()
 
     with content.container():
-        df = load_from("MongoDB")
+        df = load_from("MongoDB", 'cbbc', 'cbbc')
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = columns_to_strings(df.columns)
 
@@ -79,9 +75,9 @@ def app():
 
             tab_names = [  str(i) for i in range(0, math.ceil(len(df.columns) / lines_per_tab))]
             for i, tab in enumerate(st.tabs(tab_names)):
-
+                
                 symbols = list(set(  [str(i).split(',')[0] for i in df.columns]  ))
-                symbols_closes = {  i:Mongodb(yfinance_collection, yfinance_symbol(i), secret).read({'_id': {'$gte': df.index[0], '$lte': df.index[-1]}}, {'_id':1, 'Close':1}, is_dataframe=True) for i in symbols  }
+                symbols_closes = {  i:load_from("MongoDB", 'yfinance', yfinance_symbol(i), {'_id': {'$gte': df.index[0], '$lte': df.index[-1]}}, {'_id':1, 'Close':1}) for i in symbols  }
 
                 with tab:
                     tab_df = df[df.columns[  i*lines_per_tab:i*lines_per_tab+lines_per_tab  ]]

@@ -4,10 +4,12 @@ from default_modules import *
 
 class Mongodb:
 
-    def __init__(self, collection='test', document='test', secret=''):
+    def __init__(self, collection='test', document='test'):
         self.COLLECTION = collection
         self.DOCUMENT = document
-        self.secret = secret
+        
+        import streamlit as st
+        self.secret = st.secrets['mongodbpw']
 
     def atlas_conn(self, is_ping=False):
         uri = f"mongodb+srv://{self.secret}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
