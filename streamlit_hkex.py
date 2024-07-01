@@ -1,4 +1,3 @@
-from my_yfinance import get_ohlcv
 from my_io import read_csv, read_parquet
 from my_mongodb import Mongodb
 import streamlit as st
@@ -6,24 +5,27 @@ from default_modules import *
 import itertools
 
 root = 'hkex'
+yfinance_collection = 'yfinance'
+secret = st.secrets['mongodbpw']
 
 def yfinance_symbol(symbols):
-    if not isinstance(symbols, list):
-        symbols = [symbols]
-    y = []
-    for symbol in symbols:
+    def func(symbol):
         match symbol:
             case 'HSTEC':
-                y.append('HSTECH.HK') 
+                return 'HSTECH.HK'
             case 'HSCEI':
-                y.append('^HSCE')  
+                return '^HSCE'
         if str(symbol).isalpha():
-            y.append(f'^{symbol}')   
+            return f'^{symbol}'
         elif str(symbol).isnumeric() and len(str(symbol)) > 4:
-            y.append(f'{symbol[-4:]}.HK')    
+            return f'{symbol[-4:]}.HK'
         else:
-            y.append(symbol)
-    return y
+            return symbol
+
+    if isinstance(symbols, list):
+        return [  func(i) for i in symbols  ]
+    else:
+        return func(symbols)
 
 def load_from(source):
     match source:
@@ -34,43 +36,10 @@ def load_from(source):
         case "MongoDB":
             #query = st.text_input("query", {})
             #projection = st.text_input("projection", {})
-            document = Mongodb('test', 'cbbc')
+            
+            document = Mongodb('cbbc', 'cbbc', secret)
             df = document.read(query={}, projection={}, is_dataframe=True)
     return df
-
-def show_line_charts(dataframe, lines_per_tab=0, lines_per_chart=0, chart_height=0, is_show_close=False):
-    if not lines_per_chart:
-        lines_per_chart = st.sidebar.select_slider("No of Lines per Chart", list(range(1, 11)), 1)
-
-    if not lines_per_tab:
-        if not lines_per_chart:         
-            lines_per_chart = st.sidebar.select_slider("No of Lines per Chart", list(range(1, 11)), 1)
-        charts_per_tab = st.sidebar.select_slider("No of Charts per Tab", list(range(10, 101)), 10)
-        lines_per_tab = lines_per_chart * charts_per_tab
-
-    if not chart_height:
-        chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 500)
-    
-    df = dataframe.copy()
-    prev_symbol = ''
-    tab_names = [  str(i) for i in range(0, math.ceil(len(df.columns) / lines_per_tab))]
-    for i, tab in enumerate(st.tabs(tab_names)):
-        with tab:
-            tab_df = df[  df.columns[i*lines_per_tab:i*lines_per_tab+lines_per_tab]  ]
-            for j in range(  0, lines_per_tab, lines_per_chart  ):
-                chart_df = tab_df[  tab_df.columns[j:j+lines_per_chart]  ]
-
-                if is_show_close:
-                    if not chart_df.empty:
-                        symbol = str(chart_df.columns[0]).split(',')[0]
-                        symbol = yfinance_symbol(symbol)
-                        if symbol != prev_symbol:
-                            ohlcv = get_ohlcv(symbol, chart_df.index[0], chart_df.index[-1], is_download=False)
-                        close = get_log_returns(ohlcv[ohlcv.columns[3]]).cumsum()
-                        close_scaled = get_scaled_df(close, chart_df.min().min(), chart_df.max().max())
-                        tab.line_chart(  pd.concat([chart_df, close_scaled], axis=1), height=chart_height  )
-                else:
-                    tab.line_chart(  chart_df, height=chart_height  )
 
 def app():
 
@@ -78,11 +47,11 @@ def app():
     content = st.empty()
 
     with content.container():
-        df = load_from("Parquet")
+        df = load_from("MongoDB")
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = columns_to_strings(df.columns)
 
-        element_names = ['Underlyings', 'Data name', 'Market', 'MCE', 'Statistic']
+        element_names = [  'Underlyings', 'Data name', 'Market', 'MCE', 'Statistic'  ]
 
         elements = [  list(set(t)) for t in zip(*[  str(i).split(',') for i in df.columns  ])  ]
         elements = [  sorted(e) for e in elements  ]
@@ -90,37 +59,50 @@ def app():
         elements_selected = [  elements[i] if 'All' in e else e for i, e in enumerate(elements_selected)  ]
         elements_selected = [  ','.join(list(i)) for i in itertools.product(*elements_selected)  ]
 
-        is_show_close = st.sidebar.selectbox("is_show_close", [True, False], 1)
-
-        lines_per_chart = st.sidebar.select_slider("No of Lines per Chart", list(range(1, 11)), 1)
-        charts_per_tab = st.sidebar.select_slider("No of Charts per Tab", list(range(10, 101)), 10)
-        chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 500)
-        lines_per_tab = lines_per_chart * charts_per_tab
-
         if elements_selected:
             df = df.loc[:, df.columns.isin(elements_selected)]
 
+        from_time = st.sidebar.radio(  "Date Range", ["3M", "1Y", "All"], 1  )
+        df = df.loc[df.index[-1] - interval_to_timedelta(from_time):]
+
+        is_show_charts = st.sidebar.toggle("Show Charts", True)
+        is_show_close = st.sidebar.toggle("Show Close", True)
+
+        lines_per_chart = st.sidebar.select_slider("No of Lines per Chart", list(range(1, 11)), 1)
+        charts_per_tab = st.sidebar.select_slider("No of Charts per Tab", list(range(10, 101)), 10)
+        lines_per_tab = lines_per_chart * charts_per_tab
+
+        chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 300)
+
         if df is not None and not df.empty:
-            prev_symbol = ''
+            st.write(f"Last update: {df.index[-1].strftime('%Y-%m-%d (%a)')}")
+
             tab_names = [  str(i) for i in range(0, math.ceil(len(df.columns) / lines_per_tab))]
             for i, tab in enumerate(st.tabs(tab_names)):
+
+                symbols = list(set(  [str(i).split(',')[0] for i in df.columns]  ))
+                symbols_closes = {  i:Mongodb(yfinance_collection, yfinance_symbol(i), secret).read({'_id': {'$gte': df.index[0], '$lte': df.index[-1]}}, {'_id':1, 'Close':1}, is_dataframe=True) for i in symbols  }
+
                 with tab:
                     tab_df = df[df.columns[  i*lines_per_tab:i*lines_per_tab+lines_per_tab  ]]
                     for j in range(  0, lines_per_tab, lines_per_chart  ):
-                        chart_df = tab_df[tab_df.columns[j:j+lines_per_chart]]
+                        chart_df = tab_df[  tab_df.columns[  j:j+lines_per_chart  ]  ]
 
-                        if is_show_close:
-                            if not chart_df.empty:
-                                symbol = str(chart_df.columns[0]).split(',')[0]
-                                symbol = yfinance_symbol(symbol)
-                                if symbol != prev_symbol:
-                                    ohlcv = get_ohlcv(symbol, chart_df.index[0], chart_df.index[-1], is_download=False)
-                                    close = get_log_returns(ohlcv[ohlcv.columns[3]]).cumsum()
-                                    close_scaled = get_scaled_df(close, chart_df.min().min(), chart_df.max().max())
-                                    tab.line_chart(  pd.concat([chart_df, close_scaled], axis=1).dropna(), height=chart_height  )
-                        else:
-                            tab.line_chart(  chart_df, height=chart_height  )
-        
+                        if not chart_df.empty:      
+                            symbol = str(chart_df.columns[0]).split(',')[0]
+                            close = symbols_closes[symbol].loc[chart_df.index[0]:chart_df.index[-1]]             
+
+                            if is_show_charts:                                
+                                if is_show_close:
+                                    if close is not None:
+                                        close = get_scaled_df(close, chart_df.min().min(), chart_df.max().max())
+                                        chart_df = pd.concat([close, chart_df], axis=1)                      
+                                tab.line_chart(  chart_df, height=chart_height  )
+                            else:
+                                if is_show_close:
+                                    chart_df = pd.concat([close, chart_df], axis=1)
+                                tab.dataframe(  chart_df  )
+
 if __name__ == '__main__':
 
     app()
