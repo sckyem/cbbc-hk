@@ -8,10 +8,8 @@ class Mongodb:
     def __init__(self, collection='test', document='test'):
         self.COLLECTION = collection
         self.DOCUMENT = document
-
         self.secret = st.secrets['mongodbpw']
 
-    @st.cache_resource
     def atlas_conn(self, is_ping=False):
         uri = f"mongodb+srv://{self.secret}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
         try:
@@ -59,7 +57,6 @@ class Mongodb:
         if result and is_dataframe:
             df = pd.DataFrame(result)
             df = df.set_index(df.columns[0])
-            df.columns = strings_to_columns(df.columns)
             return df
         else:
             return result
@@ -67,19 +64,19 @@ class Mongodb:
     def update(self, data):
         new = data.to_frame() if isinstance(data, pd.Series) else data.copy()
         if isinstance(new, pd.DataFrame) and not new.empty:
-            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)            
+            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True) 
             if isinstance(old, pd.DataFrame):
                 if (list(old.columns) == list(new.columns)) and (type(old.index) == type(new.index)):
-                    result = new.ne(old).any(axis=1)
+                    result = new.ne(old).any(axis=1)    
                     diff = new.loc[result[result].index]
-                    if not diff.empty:                    
-                        document = self.document() 
+                    if not diff.empty:
                         diff.columns = columns_to_strings(diff.columns)
+                        document = self.document() 
                         for index, row in diff.iterrows():
                             filter = {'_id': index}
                             update = {'$set': row.to_dict()}
                             result = document.update_one(filter, update, upsert=True)
-                        print("Update Success" if result.acknowledged else "Error.")
+                        print(f"Update success for {self.COLLECTION} {self.DOCUMENT}" if result.acknowledged else "Error.")
                         return True
                     else:
                         print(f"No update for {self.COLLECTION} {self.DOCUMENT}.")
