@@ -78,7 +78,7 @@ def app():
         lines_per_tab = lines_per_chart * charts_per_tab
 
         chart_height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 300)
-        st.sidebar.link_button("☕ Buy Me a Coffee", coffee)
+        # st.sidebar.link_button("☕ Buy Me a Coffee", coffee)
 
         if df is not None and not df.empty:
             st.title("Historical Data of CBBC", anchor=False)
