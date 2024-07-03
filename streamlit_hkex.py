@@ -58,8 +58,8 @@ def app():
         if elements_selected:
             df = df.loc[:, df.columns.isin(elements_selected)]
 
-        from_time = st.sidebar.radio(  "Date Range", ["3M", "1Y", ""], 1  )
-        if from_time:
+        from_time = st.sidebar.radio(  "Date Range", ["3M", "1Y", "All"], 1  )
+        if from_time != 'All':
             df = df.loc[df.index[-1] - interval_to_timedelta(from_time):]
 
         is_show_charts = st.sidebar.toggle("Show Charts", True)
