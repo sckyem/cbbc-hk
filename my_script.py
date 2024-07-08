@@ -547,7 +547,7 @@ def get_the_last_position(number):
     return get_the_first_position(number)
 
 def get_scaled_df(df, min=0, max=0):
-    if len(df.columns) == 1:
+    if if isinstance(df, pd.DataFrame) len(df.columns) == 1:
         df = df.squeeze()
     if isinstance(df, pd.Series):
         return (df - df.min()) / (df.max() - df.min()) * (max - min) + min
