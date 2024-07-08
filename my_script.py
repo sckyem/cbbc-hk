@@ -348,7 +348,7 @@ def apply_rolling_function(data, window, func, suffix='', print_result=False):
         print_result(df)
     return df
 
-def multi_process(func, tasks):
+def multi_process(func, tasks, is_dataframe=True):
     import multiprocessing
     cpu_count = multiprocessing.cpu_count() - 2
     print(f"Multi processing {len(tasks)} tasks for {func.__name__}() with {cpu_count} processors.")
@@ -359,8 +359,18 @@ def multi_process(func, tasks):
             results = pool.map(func, tasks)
     pool.close()
     pool.join()
-    return results
-  
+    if is_dataframe:
+        return pd.DataFrame(results)
+    else:
+        return results
+
+# def multi_process(func, tasks, is_dataframe=True):
+#     from concurrent.futures import ProcessPoolExecutor
+#     with ProcessPoolExecutor(max_workers=4) as executor:
+#         results = [executor.submit(func, *n) for n in tasks]
+#         output_data = [result.result() for result in results]
+#     return output_data
+
 def replace_inf_with_previous_non_inf(df):
     mask = ~np.isinf(df)
     df = df.where(mask).ffill()
@@ -551,7 +561,7 @@ def get_scaled_df(df, min=0, max=0):
         df = df.squeeze()
     if isinstance(df, pd.Series):
         return (df - df.min()) / (df.max() - df.min()) * (max - min) + min
-    else:
+    elif isinstance(df, pd.DataFrame):
         columns = df.columns
         first_df = df[columns[0]]
         first_min = first_df.min()
@@ -574,7 +584,7 @@ def get_random_color():
     return "rgb" + str(tuple(random.sample(range(0, 256), 3)))
 
 def columns_to_strings(columns):
-    if isinstance(columns, pd.MultiIndex):
+    if isinstance(columns, pd.MultiIndex) or all([  isinstance(c, tuple) for c in columns   ]):
         return [','.join(str(e) for e in c) if isinstance(c, tuple) else str(c) for c in columns]
     else:
         return [str(c) for c in columns]    
@@ -609,7 +619,7 @@ def get_log_returns(ohlc, start_time_delta=-1, duration=1):
             df = p[[c for c in p.columns for x in opens + closes if x in c]]
             return pd.DataFrame(np.log(df.shift(end) / df.shift(start)))
         else:
-            for i in closes:
+            for i in closes + opens:
                 if i in p.columns:
                     p[f'{i}_{i}'] = np.log(p[i].shift(end) / p[i].shift(start))
                     returns.append(p[f'{i}_{i}'])
@@ -617,8 +627,8 @@ def get_log_returns(ohlc, start_time_delta=-1, duration=1):
                 for c in closes:
                     if o in p.columns and c in p.columns:
                         p[f'{c}_{o}'] = np.log(p[o].shift(end) / p[c].shift(start))
-                        p['interval'] = np.log(p[c].shift(end) / p[o].shift(end))
-                        returns.append(p[[f'{c}_{o}', 'interval']])
+                        p['Intraday'] = np.log(p[c].shift(end) / p[o].shift(end))
+                        returns.append(p[[f'{c}_{o}', 'Intraday']])
         return pd.concat(returns, axis=1).dropna()
 
 def search_columns(dataframe, *searches, is_index=False):    
@@ -639,10 +649,11 @@ def search_columns(dataframe, *searches, is_index=False):
                 df = df[search]
     return df
 
-def combination(elements, length, is_lists=True):
+def combination(elements, no_of_elements_per_combination, is_lists=True):
     import itertools
-    if length > 1:
-        if len(elements) >= length:
-            combination = list(itertools.combinations(elements, length))            
+    if no_of_elements_per_combination > 1:
+        if len(elements) >= no_of_elements_per_combination:
+            combination = list(itertools.combinations(elements, no_of_elements_per_combination))            
             return [list(i) for i in combination] if is_lists else combination
     return [[i] for i in elements]
+

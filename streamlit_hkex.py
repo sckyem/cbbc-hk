@@ -5,7 +5,7 @@ from default_modules import *
 import itertools
 
 root = 'hkex'
-coffee = "https://buymeacoffee.com/sckyem"
+# coffee = "https://buymeacoffee.com/sckyem"
 
 def yfinance_symbol(symbols):
     def func(symbol):
@@ -34,7 +34,7 @@ def load_from(source, collection='test', document='test', query={}, projection={
         case "CSV":
             df = read_csv(root, 'cbbc', 'cbbc')
         case "MongoDB":
-            document = Mongodb(collection, document)
+            document = Mongodb(collection=collection, document=document)
             df = document.read(query, projection, is_dataframe=True)            
     return df
 
