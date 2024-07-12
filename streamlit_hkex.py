@@ -104,7 +104,7 @@ def app():
                                 if is_show_close:
                                     if close is not None:
                                         close = get_scaled_df(close, chart_df.min().min(), chart_df.max().max())
-                                        chart_df = pd.concat([close, chart_df], axis=1)                      
+                                        chart_df = pd.concat([close, chart_df], axis=1).dropna()
                                 tab.line_chart(  chart_df, height=chart_height  )
                             else:
                                 if is_show_close:
