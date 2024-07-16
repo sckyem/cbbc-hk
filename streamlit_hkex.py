@@ -54,12 +54,10 @@ def app():
         df = load_from("MongoDB", 'cbbc', 'cbbc')
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = columns_to_strings(df.columns)
-
         from_time = st.sidebar.radio(  "Date Range", ["3M", "1Y", "All"], 1, horizontal=True  )
         
         if from_time != 'All':
-            df = df.loc[  df.index[-252]:  ]
-
+            df = df.loc[df.index[df.index.isin(pd.date_range(start=df.index[-2] - interval_to_timedelta(from_time), end=df.index[-1], freq='D'))]]            
         element_names = [  'Underlyings', 'Data name', 'Market', 'MCE', 'Statistic'  ]
 
         elements = [  sorted(list(set(t))) for t in zip(*[  str(i).split(',') for i in df.columns  ])  ]
