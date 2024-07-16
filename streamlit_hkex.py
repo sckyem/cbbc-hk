@@ -58,7 +58,7 @@ def app():
         from_time = st.sidebar.radio(  "Date Range", ["3M", "1Y", "All"], 1, horizontal=True  )
         
         if from_time != 'All':
-            df = df.loc[  df.index[-1] - interval_to_timedelta(from_time):  ]
+            df = df.loc[  df.index[-252]:  ]
 
         element_names = [  'Underlyings', 'Data name', 'Market', 'MCE', 'Statistic'  ]
 
