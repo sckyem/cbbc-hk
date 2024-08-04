@@ -1,4 +1,4 @@
-from my_mongodb import Mongodb
+from my_mongodb import Mongodb, list_collection_names
 import streamlit as st
 from default_modules import *
 import itertools
@@ -10,7 +10,8 @@ element_names = [  'Symbol', 'Data Name', 'Market', 'MCE', 'Aggregate'  ]
 @st.cache_data(ttl=28800)
 def symbol_close(start, end):
     result = {}
-    for symbol in symbols():
+    symbols = list_collection_names('yfinance')
+    for symbol in symbols:
         document = Mongodb('yfinance', symbol)
         result[symbol] = document.read({'_id': {'$gte': start, '$lte': end}}, {'_id':1, 'Close':1}, is_dataframe=True)
     return result
