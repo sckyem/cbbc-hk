@@ -2,15 +2,14 @@ from my_mongodb import Mongodb, list_collection_names
 import streamlit as st
 from default_modules import *
 import itertools
-from my_hkex import symbols
 
 root = 'hkex'
 element_names = [  'Symbol', 'Data Name', 'Market', 'MCE', 'Aggregate'  ]
+symbols = list_collection_names('yfinance')
 
 @st.cache_data(ttl=28800)
 def symbol_close(start, end):
-    result = {}
-    symbols = list_collection_names('yfinance')
+    result = {}    
     for symbol in symbols:
         document = Mongodb('yfinance', symbol)
         result[symbol] = document.read({'_id': {'$gte': start, '$lte': end}}, {'_id':1, 'Close':1}, is_dataframe=True)
@@ -43,7 +42,7 @@ def app():
         df = df.loc[df.index[df.index.isin(pd.date_range(start, end, freq='D'))]]            
         
         elements = [  sorted(list(set(t))) for t in zip(*[  str(i).split(',') for i in df.columns  ])  ]
-        elements[0] = symbols()
+        elements[0] = symbols
 
         elements_selected = [  st.sidebar.multiselect(f"{element_names[i]}", e) for i, e in enumerate(elements) ]    
         elements_selected = [  e if e else elements[i] for i, e in enumerate(elements_selected)  ]
