@@ -1,37 +1,45 @@
 from pymongo.mongo_client import MongoClient
-from pymongo.server_api import ServerApi
+#from pymongo.server_api import ServerApi
 from default_modules import *
-import streamlit as st
+
+def list_database_names(host_port='192.168.1.59:27017'):
+    client = MongoClient(f"mongodb://{host_port}")
+    return client.list_database_names()
+
+def list_collection_names(collection_name='test', host_port='192.168.1.59:27017'):
+    client = MongoClient(f"mongodb://{host_port}")
+    return client[collection_name].list_collection_names()
 
 class Mongodb:
 
-    def __init__(self, host='127.0.0.1', port=27017, collection='test', document='test'):
-        self.HOST = host
-        self.PORT = port
-        self.COLLECTION = collection
-        self.DOCUMENT = document
+    def __init__(self, collection_name='test', document_name='test', host_port='192.168.1.59:27017'):
+        self.HOST_PORT = host_port
+        self.COLLECTION_NAME = collection_name
+        self.DOCUMENT_NAME = document_name
+        self.client = MongoClient(f"mongodb://{self.HOST_PORT}")
+        self.document = self.client[self.COLLECTION_NAME][self.DOCUMENT_NAME]
 
-    def my_atlas(self, is_ping=False):
-        self.secret = st.secrets['mongodbpw']
-        uri = f"mongodb+srv://{self.secret}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-        try:
-            conn = MongoClient(uri, server_api=ServerApi('1'))
-            if is_ping:
-                conn.admin.command('ping')
-                print("Pinged your deployment. You successfully connected to MongoDB!")
-            return conn
-        except Exception as e:
-            print(e)
+    # def atlas(self, is_ping=False):
+    #     self.secret = st.secrets['mongodb_pw']
+    #     uri = f"mongodb+srv://{self.secret}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+    #     try:
+    #         conn = MongoClient(uri, server_api=ServerApi('1'))
+    #         if is_ping:
+    #             conn.admin.command('ping')
+    #             print("Pinged your deployment. You successfully connected to MongoDB!")
+    #         return conn
+    #     except Exception as e:
+    #         print(e)
 
-    def server_conn(self, is_list_dbs=False):
-            client = MongoClient(f"mongodb://{self.HOST}:{self.PORT}")
-            if is_list_dbs:
-                print(client.list_database_names())
-            return client
+    def documents(self):
+        return self.client.list_database_names()
 
-    def document(self):
-        conn = self.my_atlas()     
-        return conn[self.COLLECTION][self.DOCUMENT]
+    def delete(self):
+        """
+        Deletes all documents from the collection.
+        """
+        self.document.delete_many({})
+        print(f"Deleted {self.COLLECTION_NAME} {self.DOCUMENT_NAME} documents.")
 
     def insert(self, dataframe, batch_size=1000):
         df = dataframe.copy()
@@ -45,21 +53,19 @@ class Mongodb:
         else:
             data = df
 
-        document = self.document()
         if isinstance(data, dict):
-            result = document.insert_one(data)
-            print("Inserting data Success" if result.acknowledged else "Error.")
+            result = self.document.insert_one(data)
+            print(f"Inserting data {self.COLLECTION_NAME} {self.DOCUMENT_NAME}" + 'success' if result.acknowledged else "Error.")
 
         elif isinstance(data, list):
-            for i in range(0, len(data), batch_size):
-                batch = data[i:i+batch_size]
-                result = document.insert_many(batch)
-                print("Inserting data Success" if result.acknowledged else "Error.")                
+            for idx in range(0, len(data), batch_size):
+                batch = data[idx:idx+batch_size]
+                result = self.document.insert_many(batch)
+                print(  f"Inserting {self.COLLECTION_NAME} {self.DOCUMENT_NAME} " + "Success." if result.acknowledged else "Error.")                
         else: print(f"{type(data)} cant insert" )
 
     def find(self, query={}, projection={}, is_dataframe=False):
-        document = self.document()
-        result = list(document.find(query, projection))
+        result = list(self.document.find(query, projection))
         if result:
             if is_dataframe:
                 df = pd.DataFrame(result)
@@ -68,33 +74,37 @@ class Mongodb:
             else:
                 return result
 
-    def update(self, data):
+    def update(self, data, allow_replace=False):
         new = data.to_frame() if isinstance(data, pd.Series) else data.copy()
         if isinstance(new, pd.DataFrame) and not new.empty:
             if isinstance(new.columns, pd.MultiIndex):
                 new.columns = columns_to_strings(new.columns)
-            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True) 
+            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)             
             if isinstance(old, pd.DataFrame):
-                if (list(old.columns) == list(new.columns)) and (type(old.index) == type(new.index)):
-                    mask = new.ne(old).any(axis=1)                    
+                if is_structure_same(old, new):
+                    mask = new.ne(old).any(axis=1)
                     update_df = new.loc[new.index.isin(mask[mask].index)]
                     if not update_df.empty:
-                        document = self.document() 
                         for index, row in update_df.iterrows():
                             filter = {'_id': index}
                             update = {'$set': row.to_dict()}
-                            result = document.update_one(filter, update, upsert=True)
-                        print(  f"Update " + f"{'success' if result.acknowledged else 'error'}" + f" for {self.COLLECTION} {self.DOCUMENT}"  )
+                            result = self.document.update_one(filter, update, upsert=True)
+                        print(  f"Update " + f"{'success' if result.acknowledged else 'error'}" + f" for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
                         return True
                     else:
-                        print(  f"No update for {self.COLLECTION} {self.DOCUMENT}."  )
+                        print(  f"No update for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}."  )
                         return False
+                else:
+                    if allow_replace:
+                        self.delete()
+                        self.insert(new)
+                        return True
             else:
                 if not self.find():
                     self.insert(new)
                     return True
                 else:
-                    print(  f"Update error for {self.COLLECTION} {self.DOCUMENT}"  )
+                    print(  f"Update error for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
 
     def read(self, query={}, projection={}, is_dataframe=False):
         return self.find(query, projection, is_dataframe)
@@ -103,10 +113,13 @@ class Mongodb:
         return self.update(data)
     
     def last_id(self):
-        document = self.document()
-        last_document = document.find_one(sort=[('_id', -1)])
-        return last_document['_id']
+        last_document = self.document.find_one(sort=[('_id', -1)])
+        if isinstance(last_document, dict) and '_id' in last_document:
+            return last_document['_id']
+    
+    def first_id(self):
+        return self.document.find_one()['_id']
     
 if __name__ == '__main__':
 
-    Mongodb('192.168.1.21', 27017).conn(is_list_dbs=True)
+    pass
