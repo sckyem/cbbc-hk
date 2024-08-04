@@ -5,7 +5,7 @@ import itertools
 
 root = 'hkex'
 element_names = [  'Symbol', 'Data Name', 'Market', 'MCE', 'Aggregate'  ]
-symbols = list_collection_names('yfinance')
+symbols = ['HSI']
 
 @st.cache_data(ttl=28800)
 def symbol_close(start, end):
