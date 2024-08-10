@@ -2,17 +2,19 @@ from pymongo.mongo_client import MongoClient
 #from pymongo.server_api import ServerApi
 from default_modules import *
 
-def list_database_names(host_port='192.168.1.59:27017'):
+HOST = 'sckyem.asuscomm.com:27017'
+
+def list_database_names(host_port=HOST):
     client = MongoClient(f"mongodb://{host_port}")
     return client.list_database_names()
 
-def list_collection_names(collection_name='test', host_port='192.168.1.59:27017'):
+def list_collection_names(collection_name='test', host_port=HOST):
     client = MongoClient(f"mongodb://{host_port}")
     return client[collection_name].list_collection_names()
 
 class Mongodb:
 
-    def __init__(self, collection_name='test', document_name='test', host_port='192.168.1.59:27017'):
+    def __init__(self, collection_name='test', document_name='test', host_port=HOST):
         self.HOST_PORT = host_port
         self.COLLECTION_NAME = collection_name
         self.DOCUMENT_NAME = document_name
