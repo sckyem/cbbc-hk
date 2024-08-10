@@ -10,8 +10,22 @@ save_file = path(root, 'cbbc', 'cbbc')
 download_folder = path(root, 'download')
 unzip_folder = path(root, 'unzip')
 unzip_files = path(root, 'unzip', is_file_paths=True)
+last_files = unzip_files[-2:]
 dates_filter_out = ['2023-07-17']
 neglected_symbols = [  'HSTEC'  ]
+
+def write_symbol():
+    df = data(last_files)
+    symbols = df.groupby('Underlying')['Turnover'].sum().sort_values(ascending=False).index.to_list()
+    symbols = [  i for i in symbols if i not in neglected_symbols ]
+    symbols = pd.Series(symbols, name='symbol')
+    doc = Mongodb('cbbc', 'symbol')
+    doc.delete()
+    doc.write(symbols)
+
+def symbol():
+    symbols = Mongodb('cbbc', 'symbol').read()
+    return [  i.get('symbol') for i in symbols  ]
 
 def yfinance_symbol(symbols):
     def func(symbol):
@@ -60,11 +74,13 @@ def download():
     return result
 
 def data(files=[]):
-    if unzip_files:
+    if isinstance(files, str):
+        files = [files]
+    if not files:
+        files = unzip_files
+    if files:
         dfs = []
-        if isinstance(files, str):
-            files = [files]
-        for f in files if files else unzip_files:
+        for f in files:
             try: 
                 dfs.append(  pd.read_csv(f, encoding='utf-16le', engine='python', skipfooter=3, delimiter="\t")  )
             except: pass
@@ -81,28 +97,42 @@ def data(files=[]):
             df = df.rename(columns={'No_of_CBBC_still_out_in_market':'CBBC'})
             return df.reset_index(drop=True)
 
-def symbols():
-    df = data(files=unzip_files[-1:])
-    symbols = df.groupby('Underlying')['Turnover'].sum().sort_values(ascending=False).index.to_list()
-    return [  i for i in symbols if i not in neglected_symbols  ]        
-
-def ungrouped_cbbc():
-    df = data()
+def ungrouped_cbbc(files=[]):
+    df = data(files)
     df['Bought'] = df['No_of_CBBC_Bought'] * df['Average_Price_per_CBBC_Bought']
     df['Sold'] = df['No_of_CBBC_Sold'] * df['Average_Price_per_CBBC_Sold']
     df['Share'] = df['CBBC'] / df['Ent_Ratio']
     df = df.set_index(['Trade_Date', 'Underlying', 'Bull_Bear', 'MCE', 'Call_Level'])
     df = df[['Bought', 'Sold', 'Volume', 'CBBC', 'Turnover', 'Share']]
     df = df[~(df == 0).all(axis=1)]
-    return df
+    return df.sort_index()
 
-def cbbc():
-    df = ungrouped_cbbc()
+def cbbc(files=[]):
+    df = ungrouped_cbbc(files)
     skew = df.loc[  df.index.get_level_values('MCE') == 'N'  ].groupby(level=[0, 1, 2, 3]).agg('skew').assign(Skew='Skew').set_index('Skew', append=True).unstack(level=[1, 2, 3, 4]).dropna(axis=1, how='all').fillna(0)
     sum = df.groupby(level=[0, 1, 2, 3]).agg('sum').assign(Sum='Sum').set_index('Sum', append=True).unstack(level=[1, 2, 3, 4]).dropna(axis=1, how='all').fillna(0)
     df = pd.concat([sum, skew], axis=1)
     df = df.swaplevel(0, 1, axis=1)
     return df
+
+# def sum_cbbc(files=[]):
+#     df = ungrouped_cbbc(files)
+#     sum = df.groupby(level=[0, 1, 2, 3]).agg('sum').unstack(level=[1, 2, 3]).dropna(axis=1, how='all').fillna(0)
+#     return sum.swaplevel(0, 1, axis=1)
+
+def sum_cbbc(files=[]):
+    df = ungrouped_cbbc(files)
+    sum = df.groupby(level=[0, 1, 2, 3]).agg('sum').unstack(level=[1, 2, 3]).dropna(axis=1, how='all').fillna(0)
+    return sum.swaplevel(0, 1, axis=1)
+
+def skew_cbbc(files=[]):
+    df = ungrouped_cbbc(files)
+    skew = df.loc[  df.index.get_level_values('MCE') == 'N'  ].groupby(level=[0, 1, 2, 3])#.agg('skew').unstack(level=[1, 2, 3]).dropna(axis=1, how='all').fillna(0)
+    #return skew.swaplevel(0, 1, axis=1)
+    for name, group in skew:
+        print(name)
+        print(group)
+        print()
 
 def is_update(time):
     if time is None:
@@ -124,22 +154,23 @@ def is_update(time):
                 return True
         return False
 
-def update_cbbc(  is_check=True, is_write=True  ):
-    doc = Mongodb('cbbc', 'cbbc')
+def update_cbbc_sum(  is_check=True, is_write=True, is_replace=False, files=unzip_files  ):
+    doc = Mongodb('cbbc', 'sum')
     last = doc.last_id()
     if not is_check or is_update(last):
         downloaded = download()
         if downloaded:
-            df = cbbc()
+            df = sum_cbbc(files)
             if df is not None:
                 if is_write:
-                    doc.update(df)
+                    doc.update(df, is_replace)
                     print(df.tail())
 
 def update_yf(  is_check=True, is_write=True  ):    
     count = 0
-    for symbol in symbols():
-        doc = Mongodb('yfinance', symbol)
+    for i in symbol():
+        i = yfinance_symbol(i)
+        doc = Mongodb('yfinance',)
         last = doc.last_id()
         if last is None:
             last = string_to_datetime('2014-01-01')
@@ -148,18 +179,20 @@ def update_yf(  is_check=True, is_write=True  ):
             if count > 0:
                 time.sleep(5)
             count += 1
-            symbol = yfinance_symbol(symbol)
             if is_write:
-                df = get_ohlcv(symbol, last, datetime.datetime.now(), 10)
+                df = get_ohlcv(i, last, datetime.datetime.now(), 10)
                 doc.update(df)
                 print(df.tail())
 
 def print_cbbc():
-    doc = Mongodb(collection='cbbc', document='cbbc')
-    df = doc.read()
+    doc = Mongodb('cbbc', 'sum')
+    df = doc.read(is_dataframe=True)
     print(df)
 
 if __name__ == '__main__':
-
-    update_cbbc()
+    
+    for f in unzip_files: update_cbbc_sum(False, True, True, files=f)
     update_yf(False)
+    write_symbol()
+    print_cbbc()
+    pass
