@@ -64,50 +64,82 @@ class Mongodb:
                 print(  f"Inserting {self.COLLECTION_NAME} {self.DOCUMENT_NAME} " + "Success." if result.acknowledged else "Error.")                
         else: print(f"{type(data)} cant insert" )
 
-    def find(self, query={}, projection={}, is_dataframe=False):
+    def find(self, query={}, projection={}, is_dataframe=False, fillna=True):
         result = list(self.document.find(query, projection))
         if result:
             if is_dataframe:
                 df = pd.DataFrame(result)
                 df = df.set_index(df.columns[0])
+                if fillna: 
+                    df = df.fillna(0)
                 return df
             else:
                 return result
 
-    def update(self, data, allow_replace=False):
+    def update(self, data, is_replace=False):
         new = data.to_frame() if isinstance(data, pd.Series) else data.copy()
         if isinstance(new, pd.DataFrame) and not new.empty:
+
             if isinstance(new.columns, pd.MultiIndex):
                 new.columns = columns_to_strings(new.columns)
-            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)             
-            if isinstance(old, pd.DataFrame):
-                if is_structure_same(old, new):
-                    mask = new.ne(old).any(axis=1)
-                    update_df = new.loc[new.index.isin(mask[mask].index)]
-                    if not update_df.empty:
-                        for index, row in update_df.iterrows():
-                            filter = {'_id': index}
-                            update = {'$set': row.to_dict()}
-                            result = self.document.update_one(filter, update, upsert=True)
-                        print(  f"Update " + f"{'success' if result.acknowledged else 'error'}" + f" for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
-                        return True
-                    else:
-                        print(  f"No update for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}."  )
-                        return False
-                else:
-                    if allow_replace:
-                        self.delete()
-                        self.insert(new)
-                        return True
-            else:
-                if not self.find():
-                    self.insert(new)
-                    return True
-                else:
-                    print(  f"Update error for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
 
-    def read(self, query={}, projection={}, is_dataframe=False):
-        return self.find(query, projection, is_dataframe)
+            old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)             
+            if old is None:
+                if is_replace:
+                    self.insert(new)
+                else:
+                    print(  f"No insert for is_replace=False"  )
+            else:
+                for idx, row in new.iterrows():
+                    if idx in old.index:
+                        if is_replace:
+                            if not row.equals(old.loc[idx]):
+                                filter = {'_id': idx}
+                                update = {'$set': row.to_dict()}
+                                result = self.document.update_one(filter, update, upsert=True)
+                                print(  f"Update " + f"{'success' if result.acknowledged else 'error'}" + f" for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
+                        else:
+                            print(  f"No update for is_replace=False"  )
+                    else:
+                        filter = {'_id': idx}
+                        update = {'$set': row.to_dict()}
+                        result = self.document.insert_one(filter, update, upsert=True)
+                        print(  f"Inserting {self.COLLECTION_NAME} {self.DOCUMENT_NAME} " + "Success." if result.acknowledged else "Error."  )
+
+    # def update(self, data, allow_replace=False):
+    #     new = data.to_frame() if isinstance(data, pd.Series) else data.copy()
+    #     if isinstance(new, pd.DataFrame) and not new.empty:
+    #         if isinstance(new.columns, pd.MultiIndex):
+    #             new.columns = columns_to_strings(new.columns)
+    #         old = self.find({'_id': {'$gte': new.index[0], '$lte': new.index[-1]}}, is_dataframe=True)             
+    #         if isinstance(old, pd.DataFrame):
+    #             if is_structure_same(old, new):
+    #                 mask = new.ne(old).any(axis=1)
+    #                 update_df = new.loc[new.index.isin(mask[mask].index)]
+    #                 if not update_df.empty:
+    #                     for index, row in update_df.iterrows():
+    #                         filter = {'_id': index}
+    #                         update = {'$set': row.to_dict()}
+    #                         result = self.document.update_one(filter, update, upsert=True)
+    #                     print(  f"Update " + f"{'success' if result.acknowledged else 'error'}" + f" for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
+    #                     return True
+    #                 else:
+    #                     print(  f"No update for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}."  )
+    #                     return False
+    #             else:
+    #                 if allow_replace:
+    #                     self.delete()
+    #                     self.insert(new)
+    #                     return True
+    #         else:
+    #             if not self.find():
+    #                 self.insert(new)
+    #                 return True
+    #             else:
+    #                 print(  f"Update error for {self.COLLECTION_NAME} {self.DOCUMENT_NAME}"  )
+
+    def read(self, query={}, projection={}, is_dataframe=False, fillna=True):
+        return self.find(query, projection, is_dataframe, fillna)
 
     def write(self, data):
         return self.update(data)

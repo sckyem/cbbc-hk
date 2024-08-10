@@ -1,23 +1,26 @@
-from my_mongodb import Mongodb, list_collection_names
+from my_mongodb import Mongodb
 import streamlit as st
 from default_modules import *
 import itertools
+from my_hkex import yfinance_symbol, symbol
 
-root = 'hkex'
-element_names = [  'Symbol', 'Data Name', 'Market', 'MCE', 'Aggregate'  ]
-symbols = ['HSI']
+ELEMENT_NAMES = [  'Symbol', 'Data Name', 'Market', 'MCE'  ]
+SYMBOLS = symbol()
 
 @st.cache_data(ttl=28800)
-def symbol_close(start, end):
-    result = {}    
-    for symbol in symbols:
+def symbol_close(symbols, start, end):
+    result = {}
+    for i in symbols:
+        symbol = yfinance_symbol(i)
         document = Mongodb('yfinance', symbol)
-        result[symbol] = document.read({'_id': {'$gte': start, '$lte': end}}, {'_id':1, 'Close':1}, is_dataframe=True)
+        close = document.read({'_id': {'$gte': start, '$lte': end}}, {'_id': 1, 'Close': 1}, is_dataframe=True)        
+        if close is not None:
+            result[i] = close
     return result
 
 @st.cache_data(ttl=28800)
 def cbbc():
-    document = Mongodb('cbbc', 'cbbc')
+    document = Mongodb('cbbc', 'sum')
     return document.read(is_dataframe=True)   
 
 def app():
@@ -31,8 +34,9 @@ def app():
         )
 
     df = cbbc()
+    
     if df is not None and not df.empty:
-
+        
         from_time = st.sidebar.radio(  "Date Range", ["3M", "1Y", "All"], 1, horizontal=True  )
         if from_time != 'All':
             start = df.index[-1] - interval_to_timedelta(from_time)
@@ -41,18 +45,17 @@ def app():
         end = df.index[-1]
         df = df.loc[df.index[df.index.isin(pd.date_range(start, end, freq='D'))]]            
         
-        elements = [  sorted(list(set(t))) for t in zip(*[  str(i).split(',') for i in df.columns  ])  ]
-        elements[0] = symbols
-
-        elements_selected = [  st.sidebar.multiselect(f"{element_names[i]}", e) for i, e in enumerate(elements) ]    
-        elements_selected = [  e if e else elements[i] for i, e in enumerate(elements_selected)  ]
-
+        symbol_selected = st.sidebar.selectbox("Symbol", SYMBOLS, 0)
+        elements = [  list(set(t)) for t in zip(*[  str(i).split(',') for i in df.columns  ])  ][1:]
+        elements_selected = [  st.sidebar.multiselect(f"{ELEMENT_NAMES[i]}", e) for i, e in enumerate(elements) ]    
+        elements_selected = [[symbol_selected]] + [  e if e else elements[i] for i, e in enumerate(elements_selected)  ]
+        
         columns_filtered = [  ','.join(list(i)) for i in itertools.product(*elements_selected)  ]
         if columns_filtered:
-            df = df.loc[:, df.columns.isin(columns_filtered)]
-        df = df[sorted(df.columns)]
-
-        symbols_closes = symbol_close(start, end)
+            df = df[columns_filtered]   
+        
+        symbols_closes = symbol_close(elements_selected[0], start, end)
+        
         charts_per_tab = st.sidebar.select_slider("No of Charts per Tab", list(range(10, 101)), 10)
         height = st.sidebar.select_slider("chart_height", list(range(200, 1001, 50)), 300)
 
@@ -79,7 +82,7 @@ def app():
                                 st.line_chart(  pd.concat([chart, scaled], axis=1), height=height  )     
                             else:
                                 st.line_chart(  chart, height=height  )
-
+                                
 if __name__ == '__main__':
 
     app()
