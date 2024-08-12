@@ -2,8 +2,6 @@ from pymongo.mongo_client import MongoClient
 #from pymongo.server_api import ServerApi
 from default_modules import *
 
-HOST = 'sckyem.asuscomm.com:27017'
-
 def list_database_names(host_port=HOST):
     client = MongoClient(f"mongodb://{host_port}")
     return client.list_database_names()
