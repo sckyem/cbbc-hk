@@ -1,17 +1,25 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from pathlib import Path
 import plotly.graph_objects as go
 from my_module.my_script import *
 from my_module.my_mongodb import MongodbReaders, MongodbReader
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 class StCbbc:
     def __init__(self):
-        self.ADDRESS = f'mongodb+srv://{st.secrets["user"]}:{st.secrets["pwd"]}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0'
+        file_path = Path('/home/sckyem/.streamlit/secrets.toml')
+        if file_path.exists():
+            self.ADDRESS = f'mongodb+srv://{st.secrets["user"]}:{st.secrets["pwd"]}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0'
+        else:
+            self.ADDRESS = ''
         self.INDICATORS_NAMES = ['hkex_cbbc','hkex_cbbc_ratio']
         self.PAGE_TITLE = ''
         self.CONTENT_TITLE = 'Streamlit Cbbc'
         self.CHART_TYPES = ['Line Chart', 'Table']
+        self.N_COMPONENTS = 1
     def select_item(self, option_name=str, options=list):
         if option_name in st.query_params:
             index = options.index(st.query_params[option_name])
@@ -47,6 +55,12 @@ class StCbbc:
             return dataframe.rolling(int(ma)).mean()
         else:
             return dataframe
+    def get_pca(self, dataframe=pd.DataFrame):
+        scaled_data = StandardScaler().fit_transform(dataframe)
+        pca = PCA(n_components=self.N_COMPONENTS)
+        pca_result = pca.fit_transform(scaled_data)
+        pca_df = pd.DataFrame(data=pca_result, columns=[f'PCA{i}' for i in list(range(1, self.N_COMPONENTS+1))], index=dataframe.index)
+        return pca_df
     def select_chart_type(self):
         return self.select_item('chart_type', self.CHART_TYPES)
     def show_chart(self, chart_type, collection):
@@ -116,22 +130,22 @@ class StReturns(StOhlcv):
         df.columns = columns_to_strings(df.columns)
         return np.sign(df)
     def get_signs(self, indicator):
-        windows = [1, 2, 3, 4, 5, 10, 15, 20]
+        windows = list(range(1, 21)) #[1, 2, 3, 4, 5, 10, 15, 20]
         return pd.concat([self.get_sign(indicator, ma) for ma in windows], axis=1).iloc[max(windows):]
     def get_signs_of_last(self, indicator):
         signs = self.get_signs(indicator)
         return signs.apply(lambda x: np.where(x == x.iloc[-1], 1, 0))
     def get_benchmark(self, ohlcv):
-        return np.log(ohlcv['Close']).diff()
-    def get_cat_pnl(self, benchmark, cat):
-        dfs = []
-        for i in cat:
-            df = pd.concat([benchmark, cat[i].shift(2)], axis=1)
-            df = df.set_index(i, append=True).unstack(level=-1)
-            df.columns = columns_to_strings(df.columns)
-            df.columns = [f'{i},{j}' for j in df.columns]
-            dfs.append(df)
-        return pd.concat(dfs, axis=1).fillna(0)
+        return np.log(ohlcv['Open']).diff()
+    # def get_cat_pnl(self, benchmark, cat):
+    #     dfs = []
+    #     for i in cat:
+    #         df = pd.concat([benchmark, cat[i].shift(2)], axis=1)
+    #         df = df.set_index(i, append=True).unstack(level=-1)
+    #         df.columns = columns_to_strings(df.columns)
+    #         df.columns = [f'{i},{j}' for j in df.columns]
+    #         dfs.append(df)
+    #     return pd.concat(dfs, axis=1).fillna(0)
     def get_pnl(self, benchmark, signs):
         df = pd.concat([benchmark, signs.shift(2)], axis=1).dropna()
         r = pd.DataFrame()
@@ -155,38 +169,15 @@ class StReturns(StOhlcv):
         df['adjust_pnl'] = df['pnl'] + df['adjust']
         df['adjust_pnl'] = np.where(df['pnl'] / df['adjust_pnl'] >= 0, df['adjust_pnl'], 0)
         return df
-    def get_result(self, adjust_score):
-        df = deepcopy(adjust_score)
-        df = df[df.columns[-1]]
+    def get_result(self, adjust_score, benchmark=None):
+        df = deepcopy(adjust_score['adjust_pnl'])
         df.index = strings_to_columns(df.index)
-        df = df.unstack(-1)
-        df.columns = [int(i) for i in df.columns]
-        df = df[sorted(df.columns)]
-        df = df.apply(lambda x: np.where(x.abs() > x.abs().median(), x, 0))
-        df.loc['Total'] = df.sum()
+        df = df.unstack(level=-1)
+        df.columns = df.columns.astype(int)
+        df = df.T.sort_index()        
+        if benchmark is not None:
+            df['benchmark'] = benchmark.sum()
         return df
-    def run(self):
-        st.set_page_config(self.PAGE_TITLE, layout="wide")
-        st.title(self.CONTENT_TITLE)
-        indicator_name = self.select_indicator_name()
-        underlying = self.select_underlying(indicator_name)
-        indicator = self.get_collection(indicator_name, underlying)
-        signs = self.get_signs_of_last(indicator)
-        ohlcv = self.get_ohlcv(underlying)
-        if ohlcv is not None:
-            benchmark = self.get_benchmark(ohlcv)
-            pnl = self.get_pnl(benchmark, signs)
-            num_trades = self.get_num_trade(pnl)
-            score = self.get_score(pnl)
-            adjust_score = self.get_adjust_score(score, num_trades)
-            result = self.get_result(adjust_score)
-            chart_type = self.select_chart_type()
-            self.show_candlestick(chart_type, ohlcv)
-            st.dataframe(result, use_container_width=True)
-
-class StTest(StReturns):
-    def __init__(self):
-        super().__init__()
     def run(self):
         st.set_page_config(self.PAGE_TITLE, layout="wide")
         st.title(self.CONTENT_TITLE)
@@ -200,25 +191,22 @@ class StTest(StReturns):
             indicator = self.get_collection(indicator_name, underlying)
             st.write('This is CBBC data, postitive values mean Bulls are more, negative values mean Bears are more')
             st.dataframe(indicator)
-            signs = self.get_signs(indicator)
-            st.write('Calculate moving average(MA): 1, 2, 3, 4, 5, 10, 15, 20, MA is used to reduce no of trades (trading fee), if values greater than 0, set value to 1, else -1')
-            st.dataframe(signs)
+            indicator = self.get_pca(indicator)
+            # signs = self.get_signs(indicator)
+            # st.dataframe(signs)
             last = self.get_signs_of_last(indicator)
-            st.write('if values equal to the last row, set value to 1, else 0')
-            st.dataframe(last)
             trade = self.get_trade(last)
             num_trade = self.get_num_trade(trade)
             pnl = self.get_pnl(benchmark, last)
-            st.write(f'This is Pnl if values equal to the last row')
+            # st.write(f'This is Pnl if values equal to the last row')
             st.dataframe(pnl, use_container_width=True)
             score = self.get_score(pnl)
             adjust_score = self.get_adjust_score(score, num_trade)
             st.dataframe(adjust_score, use_container_width=True)
-            result = self.get_result(adjust_score)
-            st.dataframe(result, use_container_width=True)
-
+            result = self.get_result(adjust_score, benchmark)
+            st.line_chart(result, use_container_width=True)
 
 if __name__ == '__main__':
     
-    i = StTest()
+    i = StReturns()
     j = i.run()
