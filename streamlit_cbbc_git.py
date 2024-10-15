@@ -10,11 +10,7 @@ from sklearn.preprocessing import StandardScaler
 
 class StCbbc:
     def __init__(self):
-        file_path = Path('/home/sckyem/.streamlit/secrets.toml')
-        if file_path.exists():
-            self.ADDRESS = f'mongodb+srv://{st.secrets["user"]}:{st.secrets["pwd"]}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0'
-        else:
-            self.ADDRESS = ''
+        self.ADDRESS = f'mongodb+srv://{st.secrets["user"]}:{st.secrets["pwd"]}@cluster0.xovoill.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0'
         self.INDICATORS_NAMES = ['hkex_cbbc','hkex_cbbc_ratio']
         self.PAGE_TITLE = ''
         self.CONTENT_TITLE = 'Streamlit Cbbc'
